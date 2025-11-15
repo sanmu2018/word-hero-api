@@ -1,0 +1,792 @@
+openapi: 3.0.3
+info:
+  title: Word Hero API
+  version: "0.1.0"
+  description: |
+    REST contract for the `word-hero-api` service. The handlers mirror `sanmu2018/word-hero`
+    (synced at commit `fa9879214099a04bf36e06e5533b1bca0735d896`). Responses are wrapped by the
+    Gin helper in `pkg/pke`, which emits the `{code, msg, data}` envelope described below.
+servers:
+  - url: https://word-hero.example.com/api
+    description: Production
+  - url: http://localhost:8080/api
+    description: Local development
+tags:
+  - name: Vocabulary
+    description: Public endpoints for listing and searching words.
+  - name: Auth
+    description: Endpoints for registration, login, and profile management.
+  - name: WordTags
+    description: Per-user mastery, tagging, and statistics.
+paths:
+  /words:
+    get:
+      tags: [Vocabulary]
+      summary: List vocabulary words
+      parameters:
+        - $ref: '#/components/parameters/PageNum'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Paginated words
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WordPage'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /search:
+    get:
+      tags: [Vocabulary]
+      summary: Search vocabulary words
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Keyword to search (trimmed on the server; empty strings are rejected).
+        - $ref: '#/components/parameters/PageNum'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WordPage'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /stats:
+    get:
+      tags: [Vocabulary]
+      summary: Return aggregate vocabulary stats
+      responses:
+        '200':
+          description: Aggregate statistics
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/VocabularyStats'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegisterRequest'
+      responses:
+        '200':
+          description: Registration succeeded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuthPayload'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate and receive a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLoginRequest'
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuthPayload'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out (stateless)
+      description: Clients should delete the stored token after successful logout.
+      responses:
+        '200':
+          description: Logout acknowledgment
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MessageResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the currently authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Authenticated user profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/profile:
+    put:
+      tags: [Auth]
+      summary: Update profile information
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdateRequest'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change the current user's password
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password change confirmation
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MessageResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /user/profile:
+    get:
+      tags: [Auth]
+      summary: Retrieve the authenticated user's full profile (user service)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile payload
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /word-tags/mark:
+    post:
+      tags: [WordTags]
+      summary: Mark a word as known
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WordMarkRequest'
+      responses:
+        '200':
+          description: Updated mark status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WordMarkResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /word-tags/unmark:
+    delete:
+      tags: [WordTags]
+      summary: Remove a known mark
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WordMarkRequest'
+      responses:
+        '200':
+          description: Mark removed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WordMarkResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /word-tags/status/{wordId}:
+    get:
+      tags: [WordTags]
+      summary: Retrieve mark status for a single word
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: wordId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status for the requested word
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WordMarkStatus'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /word-tags/known:
+    post:
+      tags: [WordTags]
+      summary: Fetch known words or specific mark statuses
+      description: |
+        Provide `wordIds` to fetch mark status for selected IDs. Submit an empty body to receive
+        all known words for the authenticated user.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/WordMarkStatusRequest'
+                - type: object
+                  description: Empty object to request all known words.
+      responses:
+        '200':
+          description: Known words or status response
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        oneOf:
+                          - $ref: '#/components/schemas/WordMarkStatusResponse'
+                          - $ref: '#/components/schemas/KnownWordsResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /word-tags/progress:
+    get:
+      tags: [WordTags]
+      summary: Return the current user's learning progress
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Progress response
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProgressResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /word-tags/stats:
+    get:
+      tags: [WordTags]
+      summary: View aggregate word-tag statistics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Aggregate stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WordTagStats'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /word-tags/forget-words:
+    post:
+      tags: [WordTags]
+      summary: Forget selected words
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgetWordsRequest'
+      responses:
+        '200':
+          description: Forget words confirmation
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ForgetWordsResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /word-tags/forget-all:
+    post:
+      tags: [WordTags]
+      summary: Forget every known word for the current user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgetAllRequest'
+      responses:
+        '200':
+          description: Forget-all confirmation
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/BaseResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ForgetAllResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    PageNum:
+      name: pageNum
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: 1-based page index.
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 12
+      description: Items per page.
+    Sort:
+      name: sort
+      in: query
+      schema:
+        type: string
+      description: Optional sort expression recognized by the service.
+  responses:
+    ErrorResponse:
+      description: Standard error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    BaseResponse:
+      type: object
+      description: Standard response envelope.
+      properties:
+        code:
+          type: integer
+          description: 0 represents success; non-zero codes align with pkg/pke/errors.go.
+        msg:
+          type: string
+          nullable: true
+        data:
+          nullable: true
+    ErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+      required: [code, msg]
+      description: Error payload (data is usually null).
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+    Word:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        english:
+          type: string
+        chinese:
+          type: string
+        phonetic:
+          type: string
+          nullable: true
+        example:
+          type: string
+          nullable: true
+        definition:
+          type: string
+          nullable: true
+        difficulty:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        createdAt:
+          type: integer
+          format: int64
+        updatedAt:
+          type: integer
+          format: int64
+    WordPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Word'
+        total:
+          type: integer
+          format: int64
+    VocabularyStats:
+      type: object
+      properties:
+        totalWords:
+          type: integer
+        totalPages:
+          type: integer
+        pageSize:
+          type: integer
+        wordsByPage:
+          type: object
+          additionalProperties: {}
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+        role:
+          type: string
+        is_active:
+          type: boolean
+        last_login:
+          type: integer
+          format: int64
+          nullable: true
+        createdAt:
+          type: integer
+          format: int64
+        updatedAt:
+          type: integer
+          format: int64
+    UserRegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          maxLength: 100
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+        full_name:
+          type: string
+          maxLength: 100
+          nullable: true
+    UserLoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          description: Username or email.
+        password:
+          type: string
+    UserProfileUpdateRequest:
+      type: object
+      properties:
+        full_name:
+          type: string
+          maxLength: 100
+          nullable: true
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          nullable: true
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 6
+          maxLength: 100
+    AuthPayload:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserResponse'
+        token:
+          type: string
+    WordMarkRequest:
+      type: object
+      required: [wordId]
+      properties:
+        wordId:
+          type: string
+          format: uuid
+    WordMarkResponse:
+      type: object
+      properties:
+        wordId:
+          type: string
+          format: uuid
+        isMarked:
+          type: boolean
+        markCount:
+          type: integer
+        message:
+          type: string
+    WordMarkStatus:
+      type: object
+      properties:
+        wordId:
+          type: string
+          format: uuid
+        isMarked:
+          type: boolean
+        markCount:
+          type: integer
+        markedAt:
+          type: integer
+          format: int64
+          nullable: true
+    WordMarkStatusRequest:
+      type: object
+      required: [wordIds]
+      properties:
+        wordIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+    WordMarkStatusResponse:
+      type: object
+      properties:
+        wordMarkStatuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/WordMarkStatus'
+    KnownWordsResponse:
+      type: object
+      properties:
+        wordIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        totalCount:
+          type: integer
+          format: int64
+    UserProgressResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        knownWords:
+          type: integer
+          format: int64
+        totalWords:
+          type: integer
+          format: int64
+        progressRate:
+          type: number
+          format: float
+        recentActivity:
+          type: integer
+    WordTagStats:
+      type: object
+      properties:
+        totalWordTags:
+          type: integer
+          format: int64
+        totalUserMarks:
+          type: integer
+          format: int64
+        topWords:
+          type: array
+          description: Top marked words.
+          items:
+            type: object
+            additionalProperties: {}
+    ForgetWordsRequest:
+      type: object
+      required: [wordIds]
+      properties:
+        wordIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+    ForgetWordsResponse:
+      type: object
+      properties:
+        wordIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        forgottenCount:
+          type: integer
+        message:
+          type: string
+    ForgetAllRequest:
+      type: object
+      required: [confirm]
+      properties:
+        confirm:
+          type: boolean
+    ForgetAllResponse:
+      type: object
+      properties:
+        forgottenCount:
+          type: integer
+        message:
+          type: string
